@@ -20,6 +20,24 @@ grep -rniE "sk-[A-Za-z0-9]{16,}|10\.144\.|api[_-]?key[[:space:]]*=" \
 
 > 预期只会命中 `backend/.env.example` 与 `.gitignore` 中的**占位说明**，不应出现真实密钥或代理 IP。
 
+### 提交前自动扫描 hook（推荐启用）
+
+仓库已内置一个 pre-commit 钩子 `scripts/git-hooks/pre-commit`，每次 `git commit` 前自动拦截：
+
+- 疑似 API Key（`sk-…`）或内网 IP；
+- 敏感/环境路径（`llm_config.json`、`.env`、`duckdb/`、`.venv/`、`node_modules/`、`.run/` 等，即使 `git add -f` 也拦）；
+- 超过 100MB 的大文件。
+
+启用（克隆后**在仓库根目录**执行一次即可；`core.hooksPath` 是本地配置，不会随仓库分发）：
+
+```bash
+git config core.hooksPath "$(pwd)/scripts/git-hooks"
+```
+
+> 用绝对路径配置后，在仓库任意子目录执行 `git commit` 都会触发扫描；若用相对路径 `scripts/git-hooks`，则需从仓库根目录提交才生效。
+
+确需绕过时：`SKIP_HOOKS=1 git commit ...`（请务必确认安全）。
+
 ## 1. 在 GitHub 新建空仓库
 
 1. 登录 [github.com](https://github.com) → 右上角 `+` → **New repository**。

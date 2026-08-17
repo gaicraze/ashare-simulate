@@ -1,0 +1,86 @@
+#!/usr/bin/env bash
+# pre-commit 安全钩子：提交前扫描密钥 / 内网 IP / 敏感路径 / 超大文件，命中即拦截。
+#
+# 启用方式（克隆后执行一次即可，本仓库已在本地启用）：
+#     git config core.hooksPath scripts/git-hooks
+#
+# 紧急绕过（请务必确认安全后再用）：
+#     SKIP_HOOKS=1 git commit ...
+set -u
+
+# 命中即「拦截」的敏感/环境路径（即使被 git add -f 强制加入也拦截）
+BLOCKED_PATHS=(
+  "backend/data/llm_config.json"
+  "backend/.env"
+  ".env"
+  ".env.local"
+  "backend/data/duckdb/"
+  "backend/data/backtest/"
+  "backend/data/analysis/"
+  "backend/data/regress/"
+  "backend/data/update_state.json"
+  "backend/data/backtest_tasks_state.json"
+  "backend/.venv/"
+  "frontend/node_modules/"
+  ".run/"
+  ".tools/"
+)
+
+# 密钥 / 内网 IP 正则（可在末尾按需追加；grep -E 语法）
+SECRET_PATTERNS=(
+  'sk-[A-Za-z0-9_-]{16,}'
+  '10\.144\.203\.172'
+)
+
+# 超过 GitHub 单文件硬限制（100MB）也拦截
+MAX_SIZE=$((100 * 1024 * 1024))
+
+staged="$(git diff --cached --name-only --diff-filter=ACMR)"
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+fails=0
+
+# 1) 敏感路径拦截
+for f in $staged; do
+  for bp in "${BLOCKED_PATHS[@]}"; do
+    case "$f" in
+      "$bp"*)
+        echo "[block] 命中敏感路径，禁止提交: $f"
+        fails=1
+        ;;
+    esac
+  done
+done
+
+# 2) 密钥 / 内网 IP 扫描（grep -I 跳过二进制文件）
+for f in $staged; do
+  [ -f "$f" ] || continue
+  for pat in "${SECRET_PATTERNS[@]}"; do
+    hit="$(grep -nI -E "$pat" "$f" 2>/dev/null | head -5)"
+    if [ -n "$hit" ]; then
+      echo "[block] $f 疑似包含密钥/内网 IP："
+      echo "$hit" | sed 's/^/    /'
+      fails=1
+    fi
+  done
+done
+
+# 3) 超大文件拦截（按暂存 blob 体积）
+for f in $staged; do
+  size="$(git cat-file -s ":$f" 2>/dev/null || echo 0)"
+  if [ "$size" -gt "$MAX_SIZE" ]; then
+    echo "[block] 文件超过 100MB（GitHub 会拒绝推送）: $f（$((size / 1024 / 1024)) MB）"
+    fails=1
+  fi
+done
+
+if [ "$fails" -ne 0 ]; then
+  echo ""
+  echo "已拦截本次提交。请移除上述敏感内容后重新提交。"
+  echo "若确认无误需强制提交：SKIP_HOOKS=1 git commit ..."
+  exit 1
+fi
+
+exit 0
