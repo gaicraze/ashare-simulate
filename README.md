@@ -139,7 +139,7 @@ Stock
 
 - [架构设计](docs/architecture.md)
 - [环境搭建与运行](docs/setup.md)
-- [GitHub 上传指南](docs/GITHUB_UPLOAD.md)
+- [系统操作说明](docs/USAGE.md)
 
 ## 📄 License
 
@@ -152,5 +152,3 @@ Stock
 <div align="center">
   <img src="docs/assets/donate-qr.png" width="240" alt="赞赏码占位" />
 </div>
-
-> 💡 上图为占位图。将来若开通打赏，把你的收款码图片命名为 `donate-qr.png` 放入 `docs/assets/` 目录替换即可（详见 [`docs/assets/README.md`](docs/assets/README.md)）。
