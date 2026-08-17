@@ -1,0 +1,24 @@
+[
+  {
+    "name": "query_quality_stocks",
+    "description": "筛选指定日期（date）之前已披露财报、ROE 高于阈值且市盈率为正的优质股票，返回股票代码、ROE 和 PE。date 必须传当前决策日，避免使用未来数据；roe_threshold 为小数（0.1=10%）。",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "description": "决策日期 YYYY-MM-DD，只用该日期及之前的数据（回测必须传决策日）"
+        },
+        "roe_threshold": {
+          "type": "number",
+          "description": "ROE阈值（小数，0.1=10%），默认0.1"
+        }
+      },
+      "required": [
+        "date",
+        "roe_threshold"
+      ]
+    },
+    "sql": "SELECT s.code, f.roe, d.pe_ttm AS pe FROM stocks s JOIN (SELECT code, MAX(report_date) AS rd FROM finances WHERE pub_date <= :date GROUP BY code) fr ON fr.code = s.code JOIN finances f ON f.code = fr.code AND f.report_date = fr.rd JOIN (SELECT code, MAX(trade_date) AS td FROM daily WHERE trade_date <= :date GROUP BY code) dr ON dr.code = s.code JOIN daily d ON d.code = dr.code AND d.trade_date = dr.td WHERE f.roe > :roe_threshold AND d.pe_ttm > 0"
+  }
+]

@@ -1,0 +1,52 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+backend/.venv/
+.venv/
+venv/
+
+# ---- Node / 前端 ----
+frontend/node_modules/
+frontend/dist/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ---- 运行时日志 / PID ----
+.run/
+*.log
+*.pid
+
+# ---- 密钥与本地配置（切勿提交）----
+backend/.env
+.env
+.env.local
+backend/data/llm_config.json
+
+# ---- 派生 / 可重建数据（首次运行由 parquet 重建）----
+backend/data/duckdb/
+
+# ---- 由分片重组的大 parquet（提交 *.parquet.part* 分片，不提交完整文件）----
+backend/data/parquet/daily.parquet
+backend/data/parquet/valuation.parquet
+
+# ---- 运行期产物 / 个人数据（保留本地，不进仓库）----
+backend/data/backtest/
+backend/data/analysis/
+backend/data/regress/
+backend/data/backtest_tasks_state.json
+backend/data/update_state.json
+
+# ---- 环境专属工具（uv/uvx 二进制等）----
+.tools/
+
+# ---- 操作系统 / 编辑器 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

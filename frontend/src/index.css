@@ -1,0 +1,548 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  background: #f5f6fa;
+  color: #1f2329;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+  background: #1f2329;
+  color: #fff;
+  padding: 16px 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.logo {
+  font-size: 17px;
+  font-weight: 600;
+  padding: 0 20px;
+}
+
+.logo-sub {
+  font-size: 12px;
+  color: #8a919f;
+  padding: 2px 20px 16px;
+  border-bottom: 1px solid #333;
+  margin-bottom: 12px;
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 8px;
+}
+
+.tab {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  background: transparent;
+  color: #c9cdd4;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.tab:hover {
+  background: #2a2f36;
+  color: #fff;
+}
+
+.tab.active {
+  background: #3370ff;
+  color: #fff;
+  font-weight: 500;
+}
+
+.content {
+  flex: 1;
+  padding: 24px;
+  min-width: 0;
+}
+
+.content h1 {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.subtitle {
+  color: #8a919f;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 10px;
+  padding: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+
+.card .label {
+  font-size: 13px;
+  color: #8a919f;
+  margin-bottom: 6px;
+}
+
+.card .value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.panel {
+  background: #fff;
+  border-radius: 10px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  margin-bottom: 16px;
+}
+
+.panel h2 {
+  font-size: 16px;
+  margin-bottom: 12px;
+}
+
+.query-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.query-bar input {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 260px;
+}
+
+/* ===== 统一按钮设计 ===== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  line-height: 1;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: #3370ff;
+  color: #fff;
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+  text-decoration: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: #245bdb;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: 2px solid #3370ff;
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-success {
+  background: #12b886;
+}
+
+.btn-success:hover:not(:disabled) {
+  background: #0fa372;
+}
+
+.btn-purple {
+  background: #7048e8;
+}
+
+.btn-purple:hover:not(:disabled) {
+  background: #5d3ad4;
+}
+
+.btn-neutral {
+  background: #5b6470;
+}
+
+.btn-neutral:hover:not(:disabled) {
+  background: #4a525e;
+}
+
+.btn-danger {
+  background: #f0f1f5;
+  color: #e03131;
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #e4e7ec;
+}
+
+.btn-warning {
+  background: #f76707;
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: #e8590c;
+}
+
+.btn-ghost {
+  background: #f0f1f5;
+  color: #1f2329;
+}
+
+.btn-ghost:hover:not(:disabled) {
+  background: #e4e7ec;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+.btn-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart {
+  width: 100%;
+  height: 320px;
+}
+
+.chart-wrap {
+  position: relative;
+}
+
+.chart-hint {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a0a6b3;
+  font-size: 14px;
+  pointer-events: none;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  text-align: right;
+  border-bottom: 1px solid #f0f1f5;
+}
+
+th {
+  color: #8a919f;
+  font-weight: 500;
+  background: #fafbfc;
+}
+
+th:first-child,
+td:first-child {
+  text-align: left;
+}
+
+.up {
+  color: #e03131;
+}
+
+.down {
+  color: #12b886;
+}
+
+select {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #fff;
+}
+
+.tool-desc {
+  font-size: 13px;
+  color: #8a919f;
+  margin-bottom: 12px;
+}
+
+.tool-result {
+  background: #fafbfc;
+  border: 1px solid #f0f1f5;
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 400px;
+  overflow: auto;
+  margin: 0;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal {
+  background: #fff;
+  border-radius: 12px;
+  width: 720px;
+  max-width: 92vw;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #f0f1f5;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.modal-head div {
+  display: flex;
+  gap: 8px;
+}
+
+.modal-body {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.modal-wide {
+  width: 880px;
+}
+
+.modal-foot {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 20px;
+  border-top: 1px solid #f0f1f5;
+  background: #fafbfc;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.report-section {
+  margin-bottom: 16px;
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+.report-section .label {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: #1f2329;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a919f;
+}
+
+.field input {
+  padding: 8px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  font-size: 14px;
+  width: 150px;
+}
+
+.param-hints {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #8a919f;
+  line-height: 1.8;
+}
+
+.param-hints b {
+  color: #1f2329;
+}
+
+/* ===== 个股深度分析 ===== */
+.analysis-result {
+  margin-top: 8px;
+}
+
+.analysis-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.analysis-name {
+  font-size: 20px;
+  font-weight: 600;
+  margin-right: 10px;
+}
+
+.analysis-code {
+  font-size: 14px;
+  color: #8a919f;
+  margin-right: 10px;
+}
+
+.analysis-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 12px;
+  color: #3370ff;
+  background: #eef3ff;
+  border-radius: 10px;
+}
+
+.analysis-chart {
+  height: 300px;
+}
+
+.analysis-report {
+  margin-top: 16px;
+  border-top: 1px solid #f0f1f5;
+  padding-top: 14px;
+}
+
+.analysis-report-title {
+  font-size: 15px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+
+/* Markdown 渲染样式 */
+.md-body {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #1f2329;
+}
+
+.md-p {
+  margin-bottom: 10px;
+}
+
+.md-h2 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 16px 0 8px;
+  padding-left: 8px;
+  border-left: 3px solid #3370ff;
+}
+
+.md-h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 12px 0 6px;
+}
+
+.md-list {
+  margin: 0 0 10px 20px;
+  padding: 0;
+}
+
+.md-list li {
+  margin-bottom: 4px;
+}
+
+.md-quote {
+  margin: 0 0 12px;
+  padding: 6px 12px;
+  border-left: 3px solid #dcdfe6;
+  background: #fafbfc;
+  color: #8a919f;
+}
+
+.md-quote p {
+  margin: 0;
+}
+
+.md-code {
+  padding: 1px 5px;
+  background: #f0f1f5;
+  border-radius: 4px;
+  font-family: 'SFMono-Regular', Consolas, monospace;
+  font-size: 13px;
+  color: #c0392b;
+}
+
+.md-table-wrap {
+  overflow-x: auto;
+  margin-bottom: 12px;
+}
+
+.md-table {
+  min-width: 100%;
+  font-size: 13px;
+}
+
+.md-table th,
+.md-table td {
+  border: 1px solid #f0f1f5;
+}
+
+.md-hr {
+  border: none;
+  border-top: 1px solid #f0f1f5;
+  margin: 12px 0;
+}
