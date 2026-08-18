@@ -24,7 +24,7 @@ async def lifespan(_: FastAPI):
     scheduler.scheduler.stop()
 
 
-app = FastAPI(title="大A交易策略真实模拟器", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="大A交易策略真实模拟器", version="0.2.1", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -40,7 +40,7 @@ app.include_router(trading_routes.router, prefix="/api")
 
 @app.get("/")
 def root() -> dict:
-    return {"service": "ashare-simulator", "status": "ok", "version": "0.2.0"}
+    return {"service": "ashare-simulator", "status": "ok", "version": "0.2.1"}
 
 
 @app.get("/api/health")

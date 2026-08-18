@@ -139,6 +139,10 @@ Stock
 
 ## 📝 更新记录（Changelog）
 
+### v0.2.1
+
+- 优化交易分析中心的大模型上下文：调大 `max_tokens`（选股 1600→4000、最终操作建议 8000→24000），避免推理模型（如 deepseek-v4-pro）因 reasoning 占用 token 而截断操作建议输出。
+
 ### v0.2.0
 
 - 新增「交易分析中心」：选定策略后结合最新盘面（盘中自动拉取实时指数与个股快照）给出操作意见，支持「个股买入意见（不结合仓位）」与「结合真实仓位的买卖建议」两种模式。
@@ -159,6 +163,7 @@ Stock
 - [架构设计](docs/architecture.md)
 - [环境搭建与运行](docs/setup.md)
 - [系统操作说明](docs/USAGE.md)
+- [发布说明 v0.2.1](docs/releases/v0.2.1.md)
 - [发布说明 v0.2.0](docs/releases/v0.2.0.md)
 
 ## 📄 License
