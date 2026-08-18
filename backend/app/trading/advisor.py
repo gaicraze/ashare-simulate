@@ -316,21 +316,41 @@ def portfolio_overview(positions: list[dict], account: dict) -> dict:
     }
 
 
+def portfolio_snapshot() -> dict:
+    """账户 + 持仓的实时资产概览（供前端展示，无需生成建议）。
+
+    持仓市值取最新价（盘中实时快照，失败/非盘中降级为最新交易日收盘价），
+    与可用现金相加得到总资产，并计算仓位/现金比例与相对本金的盈亏。
+    """
+    clock = market_mod.trading_session()
+    positions = enrich_positions(positions_store.list_positions(), clock)
+    account = positions_store.get_account()
+    overview = portfolio_overview(positions, account)
+    return {
+        "clock": clock,
+        "positions": positions,
+        "account": account,
+        "overview": overview,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # 阶段二：生成建议
 # --------------------------------------------------------------------------- #
-ADVICE_SYSTEM = """你是一名经验丰富的A股交易顾问（投研助手）。你会拿到：一条交易策略、当前市场环境（可能含盘中实时数据）、一批候选股票的详细数据（可选）、以及用户的真实持仓与账户资金情况（可选，含本金、可用现金、持仓市值、仓位比例、相对本金盈亏）。请据此给出严谨、可执行的操作意见。
+ADVICE_SYSTEM = """你是一名经验丰富的A股交易顾问（投研助手）。你会拿到：一条交易策略、当前市场环境（可能含盘中实时数据）、一批候选股票的详细数据（可选）、用户的账户资金情况（可选，含本金/可用现金/持仓市值/仓位比例/相对本金盈亏）、真实持仓（可选）、以及用户的补充说明（可选）。请据此给出严谨、可执行的操作意见。
 
 写作要求：
 1. 所有数据必须来自「给定数据」，严禁编造；数据缺失处写「数据缺失」而非臆测。
 2. 结论要明确（买入/增持/持有/减仓/卖出/观望），并说明依据；语气克制，不夸大、不承诺收益、不给出确定的买卖价格点位，只给参考区间或「关注/等待」类表述。
-3. 用 Markdown 输出，结构如下（二级标题 ##）：
+3. 给出「个股买入」建议时，必须结合最新盘面与账户资金情况（本金/可用现金），给出候选标的、买入理由与参考仓位/金额区间；若用户有持仓，还需结合持仓与账户情况，对每只持仓给出加减仓/持有/止损建议，并给出整体的现金与仓位管理意见。
+4. 用户「补充说明」中的个性化要求（风险偏好、行业偏好、资金安排、规避某类股票等）优先级最高，需在结论中明确体现；与策略冲突时以补充说明为准，并说明取舍理由。
+5. 用 Markdown 输出，结构如下（二级标题 ##）：
    ## 一、市场研判
    ## 二、候选标的与操作建议（无候选时省略此节）
-   ## 三、持仓诊断与操作建议（无持仓时省略此节；有持仓时需结合本金/可用现金/仓位比例，对每只持仓给出加减仓/持有/止损建议，并给出整体的现金与仓位管理意见）
+   ## 三、持仓诊断与操作建议（无持仓时省略此节）
    ## 四、风险提示
-4. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
-5. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
+6. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
+7. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
 
 
 def build_advice_prompt(
@@ -341,10 +361,15 @@ def build_advice_prompt(
     positions: list[dict],
     account: dict | None = None,
     overview: dict | None = None,
+    notes: str | None = None,
 ) -> str:
     lines: list[str] = []
     lines.append("【交易策略】")
     lines.append(strategy_text.strip() or "（未填写策略）")
+
+    if notes and notes.strip():
+        lines.append("\n【用户补充说明】")
+        lines.append(notes.strip())
 
     lines.append("\n【市场环境】")
     lines.append(json.dumps(ctx, ensure_ascii=False, default=str))
@@ -354,17 +379,19 @@ def build_advice_prompt(
         for c in candidates:
             lines.append(json.dumps(c, ensure_ascii=False, default=str))
 
-    if mode == "portfolio":
-        lines.append("\n【用户账户与持仓】")
+    # 账户资金 + 持仓：只要设置了本金/现金或存在持仓，就作为上下文提供（两种模式都提供）
+    has_account = (account or {}).get("principal") is not None or (account or {}).get("available_cash") is not None
+    lines.append("\n【用户账户与持仓】")
+    if positions or has_account:
         lines.append(
             json.dumps(
                 {"account": account or {}, "overview": overview or {}, "positions": positions},
                 ensure_ascii=False,
                 default=str,
             )
-            if positions or (account or {}).get("principal") is not None or (account or {}).get("available_cash") is not None
-            else "（当前空仓，且未填写本金/可用现金）"
         )
+    else:
+        lines.append("（未填写本金/可用现金，且无持仓）")
 
     lines.append("\n请基于以上信息，输出操作建议（Markdown）。")
     return "\n".join(lines)
@@ -386,7 +413,13 @@ def _clean(content: str | None) -> str:
 # --------------------------------------------------------------------------- #
 # 入口
 # --------------------------------------------------------------------------- #
-def run_advice(strategy: dict, mode: str = "stock", scope: str | None = None, pull_intraday: bool = True) -> dict:
+def run_advice(
+    strategy: dict,
+    mode: str = "stock",
+    scope: str | None = None,
+    pull_intraday: bool = True,
+    notes: str | None = None,
+) -> dict:
     strategy_text = strategy.get("text") or ""
     ctx = market_mod.market_context(pull_intraday=pull_intraday)
     latest_date = ctx.get("latest_trade_date")
@@ -410,21 +443,19 @@ def run_advice(strategy: dict, mode: str = "stock", scope: str | None = None, pu
             continue
         candidates.append(_candidate_payload(data, _live_summary(live_map.get(code))))
 
-    # 3) 持仓 + 账户资金（portfolio 模式）
+    # 3) 账户资金（两种模式都提供）+ 持仓（portfolio 模式）
+    account = positions_store.get_account()
     positions: list[dict] = []
-    account: dict = {}
-    overview: dict = {}
     if mode == "portfolio":
         positions = enrich_positions(positions_store.list_positions(), ctx["clock"])
-        account = positions_store.get_account()
-        overview = portfolio_overview(positions, account)
+    overview = portfolio_overview(positions, account)
 
     # 4) 生成建议
     gateway = LLMGateway()
     resp = gateway.chat(
         [
             {"role": "system", "content": ADVICE_SYSTEM},
-            {"role": "user", "content": build_advice_prompt(strategy_text, mode, ctx, candidates, positions, account, overview)},
+            {"role": "user", "content": build_advice_prompt(strategy_text, mode, ctx, candidates, positions, account, overview, notes)},
         ],
         max_tokens=8000,
         role="trading",
@@ -441,8 +472,9 @@ def run_advice(strategy: dict, mode: str = "stock", scope: str | None = None, pu
         "market": market_mod.market_context_jsonable(ctx),
         "candidates": candidates,
         "positions": positions,
-        "account": account if mode == "portfolio" else {},
-        "portfolio_overview": overview if mode == "portfolio" else {},
+        "account": account,
+        "portfolio_overview": overview,
+        "notes": (notes or "").strip(),
         "pick_trace": pick_trace,
         "report": report,
         "model": resp.get("model") or "unknown",

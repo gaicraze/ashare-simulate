@@ -665,6 +665,13 @@ export interface PortfolioOverview {
   total_pnl_pct: number | null
 }
 
+export interface PortfolioSnapshot {
+  clock: { beijing_time: string; weekday: number; is_trading: boolean; session: string }
+  positions: any[]
+  account: Account
+  overview: PortfolioOverview
+}
+
 export interface TradingAdviceItem {
   file: string
   created_at: string | null
@@ -691,6 +698,7 @@ export interface TradingAdviceResult {
   positions?: any[]
   account?: Account
   portfolio_overview?: PortfolioOverview
+  notes?: string
   pick_trace?: { tool: string; arguments: Record<string, unknown>; result: unknown }[]
   report?: string
   markdown?: string
@@ -703,6 +711,11 @@ export async function fetchTradingMarket(): Promise<TradingMarketContext> {
 
 export async function fetchPositions(): Promise<{ positions: Position[]; account: Account }> {
   const r = await fetch('/api/trading/positions', { cache: 'no-store' })
+  return r.json()
+}
+
+export async function fetchPortfolio(): Promise<PortfolioSnapshot> {
+  const r = await fetch('/api/trading/portfolio', { cache: 'no-store' })
   return r.json()
 }
 
@@ -729,7 +742,7 @@ export async function deletePosition(id: string): Promise<{ deleted: boolean }> 
   return r.json()
 }
 
-export async function runTradingAdvice(params: { strategy_id: string; mode: string; scope?: string }): Promise<TradingAdviceResult> {
+export async function runTradingAdvice(params: { strategy_id: string; mode: string; scope?: string; notes?: string }): Promise<TradingAdviceResult> {
   const r = await fetch('/api/trading/advice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

@@ -28,6 +28,7 @@ def build_payload(result: dict) -> dict:
         "positions": result.get("positions"),
         "account": result.get("account"),
         "portfolio_overview": result.get("portfolio_overview"),
+        "notes": result.get("notes"),
         "pick_trace": result.get("pick_trace"),
         "report": result.get("report", ""),
     }
@@ -108,8 +109,10 @@ def to_markdown(d: dict) -> str:
         f"- 分析模型：{d.get('model') or '-'}",
         f"- 盘面时点：{clock.get('beijing_time') or '-'}（{clock.get('session') or '-'}）",
         f"- 数据口径：{'盘中实时' if market.get('data_mode') == 'intraday' else '最新交易日日线'}（最新交易日 {market.get('latest_trade_date') or '-'}）",
-        "",
     ]
+    if d.get("notes"):
+        lines.append(f"- 补充说明：{d['notes']}")
+    lines.append("")
     snap = market.get("snapshot") or {}
     if snap:
         lines += [

@@ -3,6 +3,7 @@ import {
   fetchStrategies,
   fetchTradingMarket,
   fetchPositions,
+  fetchPortfolio,
   updateAccount,
   upsertPosition,
   deletePosition,
@@ -12,6 +13,7 @@ import {
   deleteAdvice,
   type Strategy,
   type Position,
+  type PortfolioOverview,
   type TradingMarketContext,
   type TradingAdviceResult,
   type TradingAdviceItem,
@@ -56,10 +58,13 @@ export default function TradingCenter() {
 
   const [strategies, setStrategies] = useState<Strategy[]>([])
   const [selStrategyId, setSelStrategyId] = useState('')
-  const [mode, setMode] = useState<'stock' | 'portfolio'>('stock')
+  const [mode, setMode] = useState<'stock' | 'portfolio'>('portfolio')
   const [scope, setScope] = useState('')
+  const [notes, setNotes] = useState('')
 
   const [positions, setPositions] = useState<Position[]>([])
+  const [overview, setOverview] = useState<PortfolioOverview | null>(null)
+  const [portPositions, setPortPositions] = useState<any[]>([])
   const [acctPrincipal, setAcctPrincipal] = useState('')
   const [acctCash, setAcctCash] = useState('')
   const [posCode, setPosCode] = useState('')
@@ -91,6 +96,15 @@ export default function TradingCenter() {
       .catch(() => setPositions([]))
   }, [])
 
+  const loadPortfolio = useCallback(() => {
+    fetchPortfolio()
+      .then((d) => {
+        setOverview(d.overview || null)
+        setPortPositions(d.positions || [])
+      })
+      .catch(() => setOverview(null))
+  }, [])
+
   const loadHistory = useCallback(() => {
     fetchAdviceHistory()
       .then((d) => setHistory(d.items || []))
@@ -100,6 +114,7 @@ export default function TradingCenter() {
   useEffect(() => {
     loadMarket()
     loadPositions()
+    loadPortfolio()
     loadHistory()
     fetchStrategies()
       .then((d) => {
@@ -132,6 +147,7 @@ export default function TradingCenter() {
         strategy_id: selStrategyId,
         mode,
         scope: mode === 'stock' ? scope.trim() : undefined,
+        notes: notes.trim() || undefined,
       })
       if (!r.ok) {
         setError(r.error || '生成建议失败')
@@ -167,6 +183,7 @@ export default function TradingCenter() {
         setPosQty('')
         setPosCost('')
         loadPositions()
+        loadPortfolio()
       }
     } catch (e) {
       setError(String(e))
@@ -188,7 +205,10 @@ export default function TradingCenter() {
     try {
       const r = await updateAccount({ principal, available_cash: cash })
       if (!r.ok) setError(r.error || '保存账户资金失败')
-      else loadPositions()
+      else {
+        loadPositions()
+        loadPortfolio()
+      }
     } catch (e) {
       setError(String(e))
     }
@@ -199,6 +219,7 @@ export default function TradingCenter() {
     try {
       await deletePosition(id)
       loadPositions()
+      loadPortfolio()
     } catch (e) {
       setError(String(e))
     }
@@ -344,6 +365,23 @@ export default function TradingCenter() {
           </button>
         </div>
 
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="补充说明（选填）：可写个性化要求，如风险偏好、看好的行业/板块、资金安排、规避某类股票等。补充说明优先级最高，将一并作为上下文提供给模型。"
+          style={{
+            width: '100%',
+            height: 64,
+            padding: 8,
+            border: '1px solid #dcdfe6',
+            borderRadius: 6,
+            fontSize: 13,
+            fontFamily: 'inherit',
+            lineHeight: 1.6,
+            marginTop: 8,
+          }}
+        />
+
         {selStrategy && (
           <div className="tool-result" style={{ maxHeight: 160, marginTop: 4 }}>
             {selStrategy.text}
@@ -358,7 +396,7 @@ export default function TradingCenter() {
         )}
       </div>
 
-      {/* 持仓与账户资金管理 */}
+      {/* 真实持仓与账户资金（结合持仓模式，默认显示） */}
       {mode === 'portfolio' && (
         <div className="panel">
           <h2>💼 真实持仓与账户资金</h2>
@@ -370,6 +408,36 @@ export default function TradingCenter() {
             <input value={acctCash} onChange={(e) => setAcctCash(e.target.value)} placeholder="可用现金（元）" style={{ width: 160 }} />
             <button className="btn btn-neutral" onClick={saveAccount}>保存账户资金</button>
           </div>
+
+          {/* 资产概览：现金 + 持仓市值 = 总资产 */}
+          {overview && (overview.total_assets != null || overview.positions_value != null) && (
+            <div className="cards" style={{ margin: '12px 0 4px' }}>
+              <div className="card">
+                <div className="label">总资产</div>
+                <div className="value" style={{ fontSize: 18 }}>{fmtNum(overview.total_assets)}</div>
+              </div>
+              <div className="card">
+                <div className="label">持仓市值</div>
+                <div className="value" style={{ fontSize: 18 }}>{fmtNum(overview.positions_value)}</div>
+              </div>
+              <div className="card">
+                <div className="label">可用现金</div>
+                <div className="value" style={{ fontSize: 18 }}>{fmtNum(overview.available_cash)}</div>
+              </div>
+              <div className="card">
+                <div className="label">仓位 / 现金比例</div>
+                <div className="value" style={{ fontSize: 16 }}>
+                  {fmtNum(overview.position_ratio_pct, 1)}% / {fmtNum(overview.cash_ratio_pct, 1)}%
+                </div>
+              </div>
+              <div className="card">
+                <div className="label">相对本金盈亏</div>
+                <div className={`value ${pctCls(overview.total_pnl)}`} style={{ fontSize: 16 }}>
+                  {fmtNum(overview.total_pnl)}（{fmtNum(overview.total_pnl_pct)}%）
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="tool-desc" style={{ margin: '10px 0 6px', color: '#1f2329' }}>持仓明细（代码 / 数量 / 成本价）</div>
           <div className="query-bar" style={{ flexWrap: 'wrap' }}>
@@ -387,20 +455,29 @@ export default function TradingCenter() {
                   <th style={{ textAlign: 'left' }}>股票</th>
                   <th>数量</th>
                   <th>成本价</th>
+                  <th>现价</th>
+                  <th>市值</th>
+                  <th>浮盈亏</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                {positions.map((p) => (
-                  <tr key={p.id}>
-                    <td style={{ textAlign: 'left' }}>{p.name ? `${p.name}` : p.code}{p.name ? <span style={{ color: '#8a919f' }}> {p.code}</span> : ''}</td>
-                    <td>{fmtNum(p.quantity, 0)}</td>
-                    <td>{fmtNum(p.cost_price)}</td>
-                    <td style={{ whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-sm btn-danger" onClick={() => removePosition(p.id)}>删除</button>
-                    </td>
-                  </tr>
-                ))}
+                {positions.map((p) => {
+                  const ep = portPositions.find((x) => x.code === p.code)
+                  return (
+                    <tr key={p.id}>
+                      <td style={{ textAlign: 'left' }}>{p.name ? `${p.name}` : p.code}{p.name ? <span style={{ color: '#8a919f' }}> {p.code}</span> : ''}</td>
+                      <td>{fmtNum(p.quantity, 0)}</td>
+                      <td>{fmtNum(p.cost_price)}</td>
+                      <td>{ep ? fmtNum(ep.current_price) : '-'}</td>
+                      <td>{ep ? fmtNum(ep.market_value) : '-'}</td>
+                      <td className={pctCls(ep?.pnl_pct)}>{ep?.pnl_pct != null ? `${fmtNum(ep.pnl_pct)}%` : '-'}</td>
+                      <td style={{ whiteSpace: 'nowrap' }}>
+                        <button className="btn btn-sm btn-danger" onClick={() => removePosition(p.id)}>删除</button>
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           )}

@@ -30,6 +30,7 @@ class TradingAdviceRequest(BaseModel):
     mode: str = "stock"  # stock=个股买入意见（不结合仓位）；portfolio=结合真实仓位
     scope: str | None = None  # stock 模式下可选：指定某只股票代码/名称
     pull_intraday: bool = True  # 盘中自动拉取实时数据
+    notes: str | None = None  # 用户补充说明（个性化要求，优先级最高）
 
 
 def _resolve_name(code: str) -> str | None:
@@ -65,6 +66,12 @@ def delete_position(pid: str) -> dict:
     return {"deleted": positions_store.delete_position(pid)}
 
 
+@router.get("/trading/portfolio")
+def trading_portfolio() -> dict:
+    """账户 + 持仓的实时资产概览：持仓市值 + 可用现金 = 总资产，仓位/现金比例、盈亏。"""
+    return advisor.portfolio_snapshot()
+
+
 @router.get("/trading/account")
 def get_account() -> dict:
     """账户资金情况：本金 / 可用现金。"""
@@ -91,7 +98,7 @@ def trading_advice(req: TradingAdviceRequest) -> dict:
     if req.mode not in ("stock", "portfolio"):
         return {"ok": False, "error": f"未知分析模式：{req.mode}"}
     try:
-        result = advisor.run_advice(strategy, mode=req.mode, scope=req.scope, pull_intraday=req.pull_intraday)
+        result = advisor.run_advice(strategy, mode=req.mode, scope=req.scope, pull_intraday=req.pull_intraday, notes=req.notes)
         file = advice_store.save_advice(result).name
         full = advice_store.load_advice(file)
         return {"ok": True, **full}
