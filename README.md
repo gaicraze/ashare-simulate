@@ -158,6 +158,7 @@ Stock
 - [架构设计](docs/architecture.md)
 - [环境搭建与运行](docs/setup.md)
 - [系统操作说明](docs/USAGE.md)
+- [发布说明 v0.2.0](docs/releases/v0.2.0.md)
 
 ## 📄 License
 
