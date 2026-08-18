@@ -249,7 +249,7 @@ def _candidate_payload(data: dict, live: dict | None) -> dict:
 def enrich_positions(positions: list[dict], clock: dict) -> list[dict]:
     codes = [p["code"] for p in positions]
     live_map: dict[str, dict] = {}
-    if clock.get("is_trading"):
+    if clock.get("market_open"):
         live_map = market_mod.fetch_live_quotes(codes)
     out: list[dict] = []
     for p in positions:
@@ -451,7 +451,7 @@ def run_advice(
     # 2) 候选数据 + 实时行情
     candidates: list[dict] = []
     live_map: dict[str, dict] = {}
-    if codes and ctx["clock"]["is_trading"]:
+    if codes and ctx["clock"]["market_open"]:
         live_map = market_mod.fetch_live_quotes(codes)
     for code in codes[:6]:
         try:
@@ -490,7 +490,7 @@ def run_advice(
         "candidates": candidates,
         "positions": positions,
         "account": account,
-        "portfolio_overview": overview,
+        "portfolio_overview": overview if mode == "portfolio" else {},
         "notes": (notes or "").strip(),
         "pick_trace": pick_trace,
         "report": report,
