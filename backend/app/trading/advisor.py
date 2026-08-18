@@ -337,21 +337,22 @@ def portfolio_snapshot() -> dict:
 # --------------------------------------------------------------------------- #
 # 阶段二：生成建议
 # --------------------------------------------------------------------------- #
-ADVICE_SYSTEM = """你是一名经验丰富的A股交易顾问（投研助手）。你会拿到：一条交易策略、当前市场环境（可能含盘中实时数据）、一批候选股票的详细数据（可选）、用户的账户资金情况（可选，含本金/可用现金/持仓市值/仓位比例/相对本金盈亏）、真实持仓（可选）、以及用户的补充说明（可选）。请据此给出严谨、可执行的操作意见。
+ADVICE_SYSTEM = """你是一名经验丰富的A股交易顾问（投研助手）。你会拿到：一条交易策略、当前市场环境（可能含盘中实时数据）、一批候选股票的详细数据（可选）、用户的补充说明（可选）；在「结合真实仓位」模式下，还会额外拿到用户的真实持仓与账户资金情况（含本金、可用现金、持仓市值、仓位比例、相对本金盈亏）。请据此给出严谨、可执行的操作意见。
 
 写作要求：
 1. 所有数据必须来自「给定数据」，严禁编造；数据缺失处写「数据缺失」而非臆测。
 2. 结论要明确（买入/增持/持有/减仓/卖出/观望），并说明依据；语气克制，不夸大、不承诺收益、不给出确定的买卖价格点位，只给参考区间或「关注/等待」类表述。
-3. 严格区分模式：若用户消息中明确「本模式为个股买入意见、不结合持仓」或未提供任何持仓数据，则**只输出候选个股的买入/观望建议**（可结合账户可用资金给参考仓位/金额），**严禁输出任何持仓诊断、卖出或减仓建议**；只有当提供了真实持仓数据时，才结合持仓与账户给出加减仓/持有/止损及整体现金与仓位管理意见。
-4. 给出「个股买入」建议时，必须结合最新盘面与账户资金情况（本金/可用现金），给出候选标的、买入理由与参考仓位/金额区间。
-5. 用户「补充说明」中的个性化要求（风险偏好、行业偏好、资金安排、规避某类股票等）优先级最高，需在结论中明确体现；与策略冲突时以补充说明为准，并说明取舍理由。
-6. 用 Markdown 输出，结构如下（二级标题 ##）：
+3. 严格区分模式：
+   - 「个股买入」模式（未提供持仓数据）：只依据交易策略与市场行情，输出候选个股的买入/观望建议；严禁输出任何持仓诊断、卖出或减仓建议，也不要提及账户资金/仓位。
+   - 「结合真实仓位」模式（提供了持仓与账户数据）：才结合持仓与账户给出加减仓/持有/止损及整体现金与仓位管理意见。
+4. 用户「补充说明」中的个性化要求（风险偏好、行业偏好、资金安排、规避某类股票等）优先级最高，需在结论中明确体现；与策略冲突时以补充说明为准，并说明取舍理由。
+5. 用 Markdown 输出，结构如下（二级标题 ##）：
    ## 一、市场研判
    ## 二、候选标的与操作建议（无候选时省略此节）
    ## 三、持仓诊断与操作建议（仅当提供了真实持仓时输出，否则省略此节）
    ## 四、风险提示
-7. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
-8. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
+6. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
+7. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
 
 
 def build_advice_prompt(
@@ -380,10 +381,9 @@ def build_advice_prompt(
         for c in candidates:
             lines.append(json.dumps(c, ensure_ascii=False, default=str))
 
-    has_account = (account or {}).get("principal") is not None or (account or {}).get("available_cash") is not None
-
     if mode == "portfolio":
         # 结合真实仓位模式：提供账户 + 持仓 + 资产概览
+        has_account = (account or {}).get("principal") is not None or (account or {}).get("available_cash") is not None
         lines.append("\n【用户账户与持仓】")
         if positions or has_account:
             lines.append(
@@ -395,20 +395,7 @@ def build_advice_prompt(
             )
         else:
             lines.append("（未填写本金/可用现金，且无持仓）")
-    else:
-        # 个股买入模式：仅提供账户资金作买入仓位/金额参考，明确不结合持仓
-        lines.append("\n【账户资金（仅用于买入仓位/金额参考）】")
-        if has_account:
-            lines.append(
-                json.dumps(
-                    {"principal": account.get("principal"), "available_cash": account.get("available_cash")},
-                    ensure_ascii=False,
-                    default=str,
-                )
-            )
-            lines.append("（本模式为「个股买入意见」，不结合你的实际持仓；请勿输出任何持仓诊断、卖出或减仓建议，只输出候选个股的买入/观望建议。）")
-        else:
-            lines.append("（未填写本金/可用现金）")
+    # 个股买入模式：不提供账户/持仓/概览，只依据交易策略与市场行情分析并给买入建议
 
     lines.append("\n请基于以上信息，输出操作建议（Markdown）。")
     return "\n".join(lines)
@@ -460,12 +447,14 @@ def run_advice(
             continue
         candidates.append(_candidate_payload(data, _live_summary(live_map.get(code))))
 
-    # 3) 账户资金（两种模式都提供）+ 持仓（portfolio 模式）
-    account = positions_store.get_account()
+    # 3) 账户资金 + 持仓（仅「结合真实仓位」模式；个股买入模式不提供）
+    account: dict = {}
     positions: list[dict] = []
+    overview: dict = {}
     if mode == "portfolio":
+        account = positions_store.get_account()
         positions = enrich_positions(positions_store.list_positions(), ctx["clock"])
-    overview = portfolio_overview(positions, account)
+        overview = portfolio_overview(positions, account)
 
     # 4) 生成建议
     gateway = LLMGateway()
