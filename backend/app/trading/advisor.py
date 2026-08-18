@@ -198,7 +198,7 @@ def _pick_candidates(strategy_text: str, latest_date: str | None, scope: str | N
     trace: list[dict] = []
 
     for _ in range(5):
-        resp = gateway.chat(messages, tools=tools, role="trading", max_tokens=1600, temperature=0.2)
+        resp = gateway.chat(messages, tools=tools, role="trading", max_tokens=4000, temperature=0.2)
         msg = resp["choices"][0]["message"]
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
@@ -463,7 +463,9 @@ def run_advice(
             {"role": "system", "content": ADVICE_SYSTEM},
             {"role": "user", "content": build_advice_prompt(strategy_text, mode, ctx, candidates, positions, account, overview, notes)},
         ],
-        max_tokens=8000,
+        # 推理模型（如 deepseek-v4-pro）会把大量 token 花在 reasoning 上，max_tokens 需留足余量，
+        # 否则最终 content 会被截断。这里给到 24000，兼容推理与非推理模型的长报告输出。
+        max_tokens=24000,
         role="trading",
         temperature=0.4,
     )
