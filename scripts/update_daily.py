@@ -16,7 +16,7 @@ import httpx
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "backend"))
 
 from app.core import config  # noqa: E402
-from app.data import lake  # noqa: E402
+from app.data import lake, updater  # noqa: E402
 
 PROXY = os.getenv("DATA_PROXY") or os.getenv("PROXY") or None
 
@@ -53,6 +53,11 @@ def parse_quote(text: str) -> dict | None:
 
 
 def main() -> None:
+    # 防护：收盘前不落库（与 backend/app/data/updater.py 的 incremental_update 一致）。
+    if not updater._market_closed_today():
+        print("盘中不落库：请在收盘后（北京时间 15:00 后）运行本脚本，避免把盘中价当作收盘价写入。")
+        return
+
     conn = lake.get_connection(config.DB_PATH)
     try:
         codes = [r[0] for r in conn.execute("SELECT code FROM stocks ORDER BY code").fetchall()]

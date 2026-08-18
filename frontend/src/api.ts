@@ -619,7 +619,7 @@ export async function ingestKnowledge(text?: string, url?: string): Promise<{
 
 // ---- 交易分析中心 ----
 export interface TradingMarketContext {
-  clock: { beijing_time: string; weekday: number; is_trading: boolean; session: string }
+  clock: { beijing_time: string; weekday: number; is_trading: boolean; market_open: boolean; session: string }
   latest_trade_date: string | null
   regime: string | null
   index_close: number | null
@@ -666,7 +666,7 @@ export interface PortfolioOverview {
 }
 
 export interface PortfolioSnapshot {
-  clock: { beijing_time: string; weekday: number; is_trading: boolean; session: string }
+  clock: { beijing_time: string; weekday: number; is_trading: boolean; market_open: boolean; session: string }
   positions: any[]
   account: Account
   overview: PortfolioOverview

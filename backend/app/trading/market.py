@@ -53,6 +53,9 @@ def trading_session(now: datetime | None = None) -> dict:
     afternoon = dtime(13, 0) <= t <= dtime(15, 0)
     is_weekday = wd < 5
     is_trading = is_weekday and (morning or afternoon)
+    # 当日是否已开盘：开盘后腾讯快照即可返回当日最新价（含午休、收盘后），
+    # 用于决定是否拉取实时行情。范围比 is_trading 更宽，避免午休/收盘后误用陈旧的日线数据。
+    market_open = is_weekday and t >= dtime(9, 30)
 
     if not is_weekday:
         session = "周末休市"
@@ -71,6 +74,7 @@ def trading_session(now: datetime | None = None) -> dict:
         "beijing_time": now.strftime("%Y-%m-%d %H:%M:%S"),
         "weekday": wd,
         "is_trading": is_trading,
+        "market_open": market_open,
         "session": session,
     }
 
@@ -190,13 +194,13 @@ def market_context(pull_intraday: bool = True) -> dict:
     daily = latest_daily_snapshot()
     live_index: dict = {}
     data_mode = "eod"
-    if pull_intraday and clock["is_trading"]:
+    if pull_intraday and clock["market_open"]:
         live_index = fetch_live_index()
         if live_index:
             data_mode = "intraday"
     notes: list[str] = []
-    if clock["is_trading"] and not live_index:
-        notes.append("当前为盘中，但实时行情拉取失败，已降级为最新交易日日线数据")
+    if clock["market_open"] and not live_index:
+        notes.append("实时行情拉取失败，已降级为最新交易日日线数据")
     return {
         "clock": clock,
         "latest_trade_date": daily.get("latest_trade_date"),

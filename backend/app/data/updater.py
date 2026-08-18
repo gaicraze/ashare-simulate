@@ -18,7 +18,7 @@ import concurrent.futures
 import json
 import os
 import time
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time as dtime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -75,8 +75,42 @@ def _auto_enabled() -> bool:
     return os.getenv("DATA_AUTO_UPDATE", "1") == "1"
 
 
+# A 股收盘时刻（北京时间）；收盘后当日「收盘价」才定型。
+_MARKET_CLOSE = dtime(15, 0)
+
+
+def _beijing_now() -> datetime:
+    """当前北京时间（腾讯行情/交易所均以北京时间为准）。"""
+    try:
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("Asia/Shanghai")
+    except Exception:  # noqa: BLE001
+        tz = timezone(timedelta(hours=8))
+    return datetime.now(tz)
+
+
+def _market_closed_today() -> bool:
+    """当前是否已过当日收盘（北京时间 15:00），此时当日收盘价已定型、可安全落库。"""
+    now = _beijing_now()
+    return now.weekday() < 5 and now.time() >= _MARKET_CLOSE
+
+
 def incremental_update() -> dict:
     """拉取全市场当日快照并 UPSERT 进 daily / stocks，返回统计。"""
+    # 防护：收盘前（含盘中、午休、盘前）不落库——腾讯快照在此期间的 parts[3] 是
+    # 盘中最新价而非收盘价，写入 daily.close 会污染「最新交易日收盘价」。
+    if not _market_closed_today():
+        entry = {
+            "ts": datetime.now().isoformat(timespec="seconds"),
+            "kind": "incremental",
+            "ok": False,
+            "error": "盘中不落库：增量更新应在收盘后（北京时间 15:00 后）运行，避免把盘中价当作收盘价写入",
+            "latest_trade_date": None,
+        }
+        _append_history(entry)
+        return entry
+
     t0 = time.time()
     conn = lake.get_connection(config.DB_PATH)
     try:
