@@ -17,6 +17,7 @@ ROLES = [
     {"id": "report", "label": "报告总结"},
     {"id": "optimize", "label": "策略优化（建议用非推理模型，输出结构化结果）"},
     {"id": "analysis", "label": "个股深度分析（建议用强模型）"},
+    {"id": "trading", "label": "交易分析中心（盘中/盘后操作建议，建议用强模型）"},
     {"id": "knowledge", "label": "知识吸收与结构化（建议用强模型）"},
 ]
 
@@ -57,6 +58,7 @@ def _init_from_env() -> dict:
         "report": "deepseek" if has_ds else first,
         "optimize": "minimax" if has_mm else first,
         "analysis": "deepseek" if has_ds else first,
+        "trading": "deepseek" if has_ds else first,
         "knowledge": "minimax" if has_mm else first,
     }
     return {"providers": providers, "roles": roles}

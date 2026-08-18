@@ -5,6 +5,7 @@ import QuotesPanel from './QuotesPanel'
 import StockAnalysisPanel from './StockAnalysisPanel'
 import ToolsPanel from './ToolsPanel'
 import StrategyCenter from './StrategyCenter'
+import TradingCenter from './TradingCenter'
 import BacktestCenter from './BacktestCenter'
 import SettingsPanel from './SettingsPanel'
 import KnowledgeCenter from './KnowledgeCenter'
@@ -13,6 +14,7 @@ const TABS = [
   { id: 'overview', label: '数据总览' },
   { id: 'market', label: '行情与工具' },
   { id: 'strategy', label: '策略中心' },
+  { id: 'trading', label: '交易分析中心' },
   { id: 'backtest', label: '回测中心' },
   { id: 'knowledge', label: '知识中心' },
   { id: 'settings', label: '模型配置' },
@@ -167,7 +169,7 @@ export default function App() {
                 <br />
                 增量更新：scripts/update_daily.py（akshare）或 ashare-lake，可通过上方「更新数据」按钮触发。
                 <br />
-                左侧导航可切换各功能模块：行情与工具、策略中心、回测中心、模型配置。
+                左侧导航可切换各功能模块：行情与工具、策略中心、交易分析中心、回测中心、知识中心、模型配置。
               </div>
             </div>
           </div>
@@ -181,6 +183,7 @@ export default function App() {
           </div>
         )}
         {tab === 'strategy' && <StrategyCenter onBacktest={jumpToBacktest} />}
+        {tab === 'trading' && <TradingCenter />}
         {tab === 'backtest' && <BacktestCenter initialStrategyId={backtestStrategyId} />}
         {tab === 'knowledge' && <KnowledgeCenter />}
         {tab === 'settings' && <SettingsPanel />}

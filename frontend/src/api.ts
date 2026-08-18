@@ -616,3 +616,139 @@ export async function ingestKnowledge(text?: string, url?: string): Promise<{
   })
   return r.json()
 }
+
+// ---- 交易分析中心 ----
+export interface TradingMarketContext {
+  clock: { beijing_time: string; weekday: number; is_trading: boolean; session: string }
+  latest_trade_date: string | null
+  regime: string | null
+  index_close: number | null
+  ma20: number | null
+  ma60: number | null
+  snapshot: {
+    total: number
+    up: number
+    down: number
+    limit_up: number
+    limit_down: number
+    avg_pct: number
+    total_amount: number
+  } | null
+  live_index: Record<string, { name: string; symbol: string; price: number; prev_close: number; pct_change: number }>
+  data_mode: string
+  notes: string[]
+}
+
+export interface Position {
+  id: string
+  code: string
+  name: string | null
+  quantity: number
+  cost_price: number
+  updated_at?: string
+}
+
+export interface Account {
+  principal: number | null
+  available_cash: number | null
+  updated_at?: string
+}
+
+export interface PortfolioOverview {
+  principal: number | null
+  available_cash: number | null
+  positions_value: number | null
+  total_assets: number | null
+  position_ratio_pct: number | null
+  cash_ratio_pct: number | null
+  total_pnl: number | null
+  total_pnl_pct: number | null
+}
+
+export interface TradingAdviceItem {
+  file: string
+  created_at: string | null
+  strategy_name: string | null
+  mode: string
+  mode_label: string
+  model: string | null
+  n_candidates: number
+  n_positions: number
+  preview: string
+}
+
+export interface TradingAdviceResult {
+  ok: boolean
+  error?: string
+  file?: string
+  model?: string
+  strategy_id?: string
+  strategy_name?: string
+  mode?: string
+  created_at?: string
+  market?: TradingMarketContext
+  candidates?: any[]
+  positions?: any[]
+  account?: Account
+  portfolio_overview?: PortfolioOverview
+  pick_trace?: { tool: string; arguments: Record<string, unknown>; result: unknown }[]
+  report?: string
+  markdown?: string
+}
+
+export async function fetchTradingMarket(): Promise<TradingMarketContext> {
+  const r = await fetch('/api/trading/market', { cache: 'no-store' })
+  return r.json()
+}
+
+export async function fetchPositions(): Promise<{ positions: Position[]; account: Account }> {
+  const r = await fetch('/api/trading/positions', { cache: 'no-store' })
+  return r.json()
+}
+
+export async function updateAccount(p: { principal?: number | null; available_cash?: number | null }): Promise<{ ok: boolean; error?: string; account?: Account }> {
+  const r = await fetch('/api/trading/account', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(p),
+  })
+  return r.json()
+}
+
+export async function upsertPosition(p: { code: string; name?: string; quantity: number; cost_price: number }): Promise<{ ok: boolean; error?: string; position?: Position }> {
+  const r = await fetch('/api/trading/positions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(p),
+  })
+  return r.json()
+}
+
+export async function deletePosition(id: string): Promise<{ deleted: boolean }> {
+  const r = await fetch(`/api/trading/positions/${id}`, { method: 'DELETE' })
+  return r.json()
+}
+
+export async function runTradingAdvice(params: { strategy_id: string; mode: string; scope?: string }): Promise<TradingAdviceResult> {
+  const r = await fetch('/api/trading/advice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  })
+  return r.json()
+}
+
+export async function fetchAdviceHistory(): Promise<{ items: TradingAdviceItem[] }> {
+  const r = await fetch('/api/trading/advice/history', { cache: 'no-store' })
+  return r.json()
+}
+
+export async function fetchAdviceResult(file: string): Promise<TradingAdviceResult> {
+  const r = await fetch(`/api/trading/advice/result?file=${encodeURIComponent(file)}`, { cache: 'no-store' })
+  return r.json()
+}
+
+export async function deleteAdvice(file: string): Promise<{ deleted: boolean }> {
+  const r = await fetch(`/api/trading/advice/result?file=${encodeURIComponent(file)}`, { method: 'DELETE' })
+  return r.json()
+}

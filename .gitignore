@@ -41,6 +41,11 @@ backend/data/regress/
 backend/data/backtest_tasks_state.json
 backend/data/update_state.json
 
+# ---- 交易分析中心：个人持仓/账户资金与建议历史（保留本地，不进仓库）----
+backend/data/positions.json
+backend/data/account.json
+backend/data/trading/
+
 # ---- 环境专属工具（uv/uvx 二进制等）----
 .tools/
 
