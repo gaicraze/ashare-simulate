@@ -48,6 +48,9 @@ class DataUpdateScheduler:
         last = status.get("last_update") or {}
         if last.get("kind") != "incremental":
             return False
+        # 仅「成功」的增量更新才算已完成当日更新；失败或盘中拦截（ok=False）不阻塞后续重试。
+        if not last.get("ok"):
+            return False
         ts = last.get("ts", "")
         return ts[:10] == datetime.now().strftime("%Y-%m-%d")
 
