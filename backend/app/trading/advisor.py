@@ -342,15 +342,16 @@ ADVICE_SYSTEM = """你是一名经验丰富的A股交易顾问（投研助手）
 写作要求：
 1. 所有数据必须来自「给定数据」，严禁编造；数据缺失处写「数据缺失」而非臆测。
 2. 结论要明确（买入/增持/持有/减仓/卖出/观望），并说明依据；语气克制，不夸大、不承诺收益、不给出确定的买卖价格点位，只给参考区间或「关注/等待」类表述。
-3. 给出「个股买入」建议时，必须结合最新盘面与账户资金情况（本金/可用现金），给出候选标的、买入理由与参考仓位/金额区间；若用户有持仓，还需结合持仓与账户情况，对每只持仓给出加减仓/持有/止损建议，并给出整体的现金与仓位管理意见。
-4. 用户「补充说明」中的个性化要求（风险偏好、行业偏好、资金安排、规避某类股票等）优先级最高，需在结论中明确体现；与策略冲突时以补充说明为准，并说明取舍理由。
-5. 用 Markdown 输出，结构如下（二级标题 ##）：
+3. 严格区分模式：若用户消息中明确「本模式为个股买入意见、不结合持仓」或未提供任何持仓数据，则**只输出候选个股的买入/观望建议**（可结合账户可用资金给参考仓位/金额），**严禁输出任何持仓诊断、卖出或减仓建议**；只有当提供了真实持仓数据时，才结合持仓与账户给出加减仓/持有/止损及整体现金与仓位管理意见。
+4. 给出「个股买入」建议时，必须结合最新盘面与账户资金情况（本金/可用现金），给出候选标的、买入理由与参考仓位/金额区间。
+5. 用户「补充说明」中的个性化要求（风险偏好、行业偏好、资金安排、规避某类股票等）优先级最高，需在结论中明确体现；与策略冲突时以补充说明为准，并说明取舍理由。
+6. 用 Markdown 输出，结构如下（二级标题 ##）：
    ## 一、市场研判
    ## 二、候选标的与操作建议（无候选时省略此节）
-   ## 三、持仓诊断与操作建议（无持仓时省略此节）
+   ## 三、持仓诊断与操作建议（仅当提供了真实持仓时输出，否则省略此节）
    ## 四、风险提示
-6. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
-7. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
+7. 每个标的/持仓给出一句话操作结论（可附参考区间），并说明这是基于当前盘面的参考。
+8. 结尾固定一行：> 本建议由 AI 自动生成，仅供研究参考，不构成任何投资建议，据此操作风险自负。"""
 
 
 def build_advice_prompt(
@@ -379,19 +380,35 @@ def build_advice_prompt(
         for c in candidates:
             lines.append(json.dumps(c, ensure_ascii=False, default=str))
 
-    # 账户资金 + 持仓：只要设置了本金/现金或存在持仓，就作为上下文提供（两种模式都提供）
     has_account = (account or {}).get("principal") is not None or (account or {}).get("available_cash") is not None
-    lines.append("\n【用户账户与持仓】")
-    if positions or has_account:
-        lines.append(
-            json.dumps(
-                {"account": account or {}, "overview": overview or {}, "positions": positions},
-                ensure_ascii=False,
-                default=str,
+
+    if mode == "portfolio":
+        # 结合真实仓位模式：提供账户 + 持仓 + 资产概览
+        lines.append("\n【用户账户与持仓】")
+        if positions or has_account:
+            lines.append(
+                json.dumps(
+                    {"account": account or {}, "overview": overview or {}, "positions": positions},
+                    ensure_ascii=False,
+                    default=str,
+                )
             )
-        )
+        else:
+            lines.append("（未填写本金/可用现金，且无持仓）")
     else:
-        lines.append("（未填写本金/可用现金，且无持仓）")
+        # 个股买入模式：仅提供账户资金作买入仓位/金额参考，明确不结合持仓
+        lines.append("\n【账户资金（仅用于买入仓位/金额参考）】")
+        if has_account:
+            lines.append(
+                json.dumps(
+                    {"principal": account.get("principal"), "available_cash": account.get("available_cash")},
+                    ensure_ascii=False,
+                    default=str,
+                )
+            )
+            lines.append("（本模式为「个股买入意见」，不结合你的实际持仓；请勿输出任何持仓诊断、卖出或减仓建议，只输出候选个股的买入/观望建议。）")
+        else:
+            lines.append("（未填写本金/可用现金）")
 
     lines.append("\n请基于以上信息，输出操作建议（Markdown）。")
     return "\n".join(lines)
