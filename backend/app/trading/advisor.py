@@ -15,11 +15,13 @@ import re
 from typing import Any
 
 from ..analysis.stock import collect_stock_data, resolve_stock
+from ..data import updater
 from ..llm.gateway import LLMGateway
 from ..tools import db
 from ..tools.base import Tool
 from ..tools.default import default_registry
 from ..tools.registry import ToolRegistry
+from . import data_tools
 from . import market as market_mod
 from . import positions as positions_store
 
@@ -55,11 +57,20 @@ class GetLiveQuote(Tool):
 
 
 def _advisor_registry() -> ToolRegistry:
-    """复制默认工具集并追加实时行情工具（不改动回测共用的全局注册表）。"""
+    """复制默认工具集并追加交易分析中心专用工具（不改动回测共用的全局注册表）。
+
+    追加：
+    - GetLiveQuote：盘中实时行情快照；
+    - UpdateIndexData / UpdateStockData：分析过程中主动补全数据；
+    - CreateSqlTool：自主创造只读 SQL 工具。
+    """
     reg = ToolRegistry()
     for name, tool in default_registry._tools.items():  # noqa: SLF001
         reg.register(tool)
     reg.register(GetLiveQuote())
+    reg.register(data_tools.UpdateIndexData())
+    reg.register(data_tools.UpdateStockData())
+    reg.register(data_tools.CreateSqlTool(reg))
     return reg
 
 
@@ -122,10 +133,12 @@ PICK_SYSTEM = """你是A股选股助手。根据给定的交易策略，主动�
 1. 必须先调用工具获取真实数据再下结论，严禁凭空编造股票代码。
 2. 可多轮调用工具：先看市场环境/排名/筛选，再针对个股查量价/资金流/实时行情。
 3. 查询排名、筛选、RPS 类工具时，date 参数请使用最新交易日 {date}。
-4. 最终只输出一个 JSON 对象（不要输出其它任何文字），格式：
+4. 若发现指数数据滞后（get_index_trend / get_index_daily / get_market_regime 返回的日期明显早于 {date}），先调用 update_index_data 补全指数，再重新查询指数指标；若某只个股数据不足/缺失，先调用 update_stock_data 补全该股。
+5. 若现有工具无法满足某个查询需求，可调用 create_sql_tool 自主创造新的只读 SQL 工具，并立即使用。
+6. 最终只输出一个 JSON 对象（不要输出其它任何文字），格式：
 {"codes": ["600519", "300750"], "reason": "一句话说明选股逻辑"}
    若按策略当前应空仓、或没有符合条件的股票，请输出 {"codes": [], "reason": "说明原因"}。
-5. codes 中只能是可交易的 A 股个股代码（来自筛选/排名工具的 rows.code），严禁填写指数代码（如 000300、000001、399001、399006）。"""
+7. codes 中只能是可交易的 A 股个股代码（来自筛选/排名工具的 rows.code），严禁填写指数代码（如 000300、000001、399001、399006）。"""
 
 # 仅这些工具的返回里包含「可交易个股」的 code 列表，兜底采集时只认它们，避免误采指数代码。
 _CANDIDATE_TOOLS = {
@@ -194,11 +207,13 @@ def _pick_candidates(strategy_text: str, latest_date: str | None, scope: str | N
         {"role": "system", "content": PICK_SYSTEM.replace("{date}", date)},
         {"role": "user", "content": f"最新交易日：{date}\n\n交易策略：\n{strategy_text}"},
     ]
-    tools = reg.list_schemas()
     trace: list[dict] = []
 
-    for _ in range(5):
-        resp = gateway.chat(messages, tools=tools, role="trading", max_tokens=4000, temperature=0.2)
+    for _ in range(8):
+        # 每轮重新生成 schema：让 create_sql_tool 创造的新工具在后续轮次可被模型看到并调用。
+        tools = reg.list_schemas()
+        # 推理模型（如 deepseek-v4-pro）会把大量 token 花在 reasoning 上，给足余量避免截断。
+        resp = gateway.chat(messages, tools=tools, role="trading", max_tokens=8000, temperature=0.2)
         msg = resp["choices"][0]["message"]
         tool_calls = msg.get("tool_calls")
         if not tool_calls:
@@ -425,6 +440,9 @@ def run_advice(
     notes: str | None = None,
 ) -> dict:
     strategy_text = strategy.get("text") or ""
+    # 生成建议前自动补齐指数数据：避免指数滞后导致三层择时信号不完整。
+    # ensure_index_fresh 内部已做失败兜底（失败不抛异常），并会把滞后情况标注进盘面环境。
+    updater.ensure_index_fresh()
     ctx = market_mod.market_context(pull_intraday=pull_intraday)
     latest_date = ctx.get("latest_trade_date")
 

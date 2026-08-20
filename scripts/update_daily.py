@@ -115,6 +115,14 @@ def main() -> None:
     finally:
         conn.close()
 
+    # 同步补齐指数日线，避免指数数据滞后于个股
+    print("补齐指数日线…")
+    idx = updater.incremental_index_update()
+    if idx.get("ok"):
+        print(f"指数更新完成: {idx.get('end')} / {idx.get('codes')}")
+    else:
+        print(f"[warn] 指数更新失败: {idx.get('error') or idx.get('codes')}")
+
 
 if __name__ == "__main__":
     main()

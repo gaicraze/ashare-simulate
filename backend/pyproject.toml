@@ -1,6 +1,6 @@
 [project]
 name = "ashare-simulator"
-version = "0.2.1"
+version = "0.2.2"
 description = "大A交易策略真实模拟器 - 后端"
 requires-python = ">=3.11"
 dependencies = [

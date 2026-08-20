@@ -62,6 +62,7 @@ def get_update_status() -> dict:
         "history": state.get("history", []),
         "backfill": state.get("backfill"),
         "moneyflow": state.get("moneyflow_backfill"),
+        "index_update": state.get("index_update"),
         "auto_update": _auto_enabled(),
     }
 
@@ -181,8 +182,203 @@ def incremental_update() -> dict:
         "db_rows": int(row[1]) if row else 0,
         "elapsed_sec": round(time.time() - t0, 1),
     }
+    # 同时补齐指数日线，避免个股日线与指数日线日期脱节（见 _index_sync_one）。
+    entry["index"] = incremental_index_update()
     _append_history(entry)
     return entry
+
+
+# --------------------------------------------------------------------------- #
+# 指数增量更新
+# --------------------------------------------------------------------------- #
+INDEX_META = {
+    "000300": "沪深300",
+    "000001": "上证指数",
+    "399001": "深证成指",
+    "399006": "创业板指",
+}
+
+
+def _index_sync_one(code: str, end: str) -> dict:
+    """把单个指数日线补齐到 end（历史日线，盘中调用也不会污染收盘价）。
+
+    指数日 K 只含已收盘的完整日线，且 ``fetch_index_hist`` 返回的是历史日线，
+    因此与个股快照增量不同，本函数无需「收盘后才落库」防护，可随时安全重跑。
+    """
+    conn = lake.get_connection(config.DB_PATH)
+    try:
+        row = conn.execute("SELECT MAX(trade_date) FROM indices WHERE code = ?", [code]).fetchone()
+        last = str(row[0]) if row and row[0] else None
+    finally:
+        conn.close()
+
+    if last and last >= end:
+        return {"code": code, "inserted": 0, "latest": last, "skipped": True}
+
+    start = last or "2019-01-01"
+    bars = sources.fetch_index_hist(code, start, end)
+    if not bars:
+        return {"code": code, "inserted": 0, "latest": last, "error": "未获取到指数日K"}
+
+    name = INDEX_META.get(code, code)
+    inserted = 0
+    latest = last
+    conn = lake.get_connection(config.DB_PATH)
+    try:
+        for b in bars:
+            d = str(b.get("date", ""))[:10]
+            # 只写入 (last, end] 区间内的完整日线：
+            # - 防止盘中把当日未收盘的指数 K 线当成收盘价落库；
+            # - 跳过已存在的历史行，避免用新数据源覆盖历史数据。
+            if len(d) != 10 or (end and d > end) or (last and d <= last):
+                continue
+            conn.execute(
+                """
+                INSERT INTO indices (code, name, trade_date, open, high, low, close, volume, amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (code, trade_date) DO UPDATE SET
+                    name = excluded.name, open = excluded.open, high = excluded.high,
+                    low = excluded.low, close = excluded.close, volume = excluded.volume,
+                    amount = excluded.amount
+                """,
+                [code, name, d, b.get("open"), b.get("high"), b.get("low"),
+                 b.get("close"), b.get("volume"), b.get("amount")],
+            )
+            inserted += 1
+            latest = max(latest or "", d)
+    finally:
+        conn.close()
+    return {"code": code, "inserted": inserted, "latest": latest}
+
+
+def _save_index_state(entry: dict) -> None:
+    """把指数更新状态写入独立字段，避免覆盖「个股增量更新」的 last_update。"""
+    state = _load_state()
+    state["index_update"] = entry
+    _save_state(state)
+
+
+def incremental_index_update(codes: list[str] | None = None) -> dict:
+    """补齐指数日线到 daily 的最新交易日（幂等，可安全重跑）。
+
+    与个股增量更新独立：既可由 ``incremental_update`` 一并触发，也可单独调用
+    （手动按钮 / 交易分析中心自动补全）。
+    """
+    t0 = time.time()
+    conn = lake.get_connection(config.DB_PATH, read_only=True)
+    try:
+        row = conn.execute("SELECT MAX(trade_date) FROM daily").fetchone()
+        end = str(row[0]) if row and row[0] else None
+    finally:
+        conn.close()
+    if not end:
+        return {"ok": False, "error": "数据湖为空", "codes": []}
+
+    codes = codes or ["000300"]
+    results = [_index_sync_one(c, end) for c in codes]
+    entry = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "kind": "incremental_index",
+        "ok": all("error" not in r for r in results),
+        "end": end,
+        "codes": results,
+        "elapsed_sec": round(time.time() - t0, 1),
+    }
+    _save_index_state(entry)
+    return entry
+
+
+def ensure_index_fresh(codes: list[str] | None = None) -> dict:
+    """交易分析中心入口：确保指数数据不滞后于个股数据（失败不抛异常）。
+
+    检测 ``indices`` 最新交易日是否落后于 ``daily``，落后则自动补齐；
+    结果同时写入 index_update 状态。
+    """
+    try:
+        conn = lake.get_connection(config.DB_PATH, read_only=True)
+        try:
+            idx = conn.execute("SELECT MAX(trade_date) FROM indices").fetchone()[0]
+            daily = conn.execute("SELECT MAX(trade_date) FROM daily").fetchone()[0]
+        finally:
+            conn.close()
+        if idx and daily and str(idx) >= str(daily):
+            return {"ok": True, "updated": False, "index_latest": str(idx)}
+        return incremental_index_update(codes)
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "updated": False, "error": f"{type(e).__name__}: {e}"}
+
+
+# --------------------------------------------------------------------------- #
+# 个股日线补全（交易分析中心按需补全）
+# --------------------------------------------------------------------------- #
+def sync_stock_daily(codes: list[str]) -> dict:
+    """把指定个股的日线补齐/刷新到最新（历史日线，可安全重复调用）。
+
+    拉取原始 K 线 + 后复权 K 线，对缺失日期 INSERT、已有日期 UPSERT，
+    用于交易分析中心在分析过程中主动补全个股数据。
+    """
+    results = [_sync_stock_one(c) for c in codes]
+    return {"ok": True, "results": results}
+
+
+def _sync_stock_one(code: str) -> dict:
+    today = date.today().isoformat()
+    conn = lake.get_connection(config.DB_PATH)
+    try:
+        row = conn.execute("SELECT MAX(trade_date) FROM daily WHERE code = ?", [code]).fetchone()
+        last = str(row[0]) if row and row[0] else None
+        gmax = conn.execute("SELECT MAX(trade_date) FROM daily").fetchone()[0]
+    finally:
+        conn.close()
+
+    # 以数据湖已落库的最新交易日为上限：盘中调用也不写入当日未定型的盘中价。
+    end = str(gmax) if gmax else today
+    start = last or (date.today() - timedelta(days=120)).isoformat()
+    raw = sources.fetch_kline_full(code, start, end, fq="")
+    if not raw:
+        return {"code": code, "updated": 0, "error": "未获取到个股日K"}
+    raw = [b for b in raw if b.get("date") and b["date"] <= end]
+    raw.sort(key=lambda b: b["date"])
+    hfq = {b["date"]: b.get("close") for b in sources.fetch_kline_full(code, start, end, fq="hfq") if b.get("date")}
+
+    conn = lake.get_connection(config.DB_PATH)
+    try:
+        row = conn.execute(
+            "SELECT close FROM daily WHERE code = ? AND trade_date < ? ORDER BY trade_date DESC LIMIT 1",
+            [code, raw[0]["date"]],
+        ).fetchone()
+        prev_close = row[0] if row else None
+        n = 0
+        for b in raw:
+            d = b["date"]
+            close = b.get("close")
+            pct = (close / prev_close - 1) * 100 if (close and prev_close) else None
+            adj = (hfq.get(d) / close) if (hfq.get(d) and close) else None
+            fmc = _derive_float_mktcap(b.get("volume"), close, b.get("turnover"))
+            conn.execute(
+                """
+                INSERT INTO daily (code, trade_date, open, high, low, close, volume, amount,
+                                   adj_factor, pct_change, turnover, float_mktcap)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT (code, trade_date) DO UPDATE SET
+                    open = excluded.open, high = excluded.high, low = excluded.low,
+                    close = excluded.close, volume = excluded.volume,
+                    amount = COALESCE(excluded.amount, daily.amount),
+                    adj_factor = COALESCE(excluded.adj_factor, daily.adj_factor),
+                    pct_change = COALESCE(excluded.pct_change, daily.pct_change),
+                    turnover = COALESCE(excluded.turnover, daily.turnover),
+                    float_mktcap = COALESCE(excluded.float_mktcap, daily.float_mktcap)
+                """,
+                [code, d, b.get("open"), b.get("high"), b.get("low"), close,
+                 b.get("volume"), b.get("amount"), adj, pct, b.get("turnover"), fmc],
+            )
+            prev_close = close
+            n += 1
+        row = conn.execute("SELECT MAX(trade_date) FROM daily WHERE code = ?", [code]).fetchone()
+        latest = str(row[0]) if row and row[0] else None
+    finally:
+        conn.close()
+    return {"code": code, "updated": n, "latest": latest}
 
 
 # --------------------------------------------------------------------------- #
@@ -713,11 +909,16 @@ def freshness() -> dict:
             "SELECT COUNT(*) FROM daily WHERE trade_date = (SELECT MAX(trade_date) FROM daily)"
         ).fetchone()[0]
         total = conn.execute("SELECT COUNT(*) FROM stocks").fetchone()[0]
+        idx = conn.execute("SELECT MAX(trade_date) FROM indices").fetchone()[0]
     finally:
         conn.close()
+    idx_s = str(idx) if idx else None
+    latest_s = str(latest) if latest else None
     return {
-        "latest_trade_date": str(latest) if latest else None,
+        "latest_trade_date": latest_s,
         "stocks_on_latest_day": n,
         "stocks_total": total,
         "stale": n < total,
+        "index_latest_date": idx_s,
+        "index_stale": bool(idx_s and latest_s and idx_s < latest_s),
     }

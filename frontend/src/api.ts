@@ -376,13 +376,26 @@ export async function updateData(): Promise<any> {
   return r.json()
 }
 
+export async function updateIndexData(): Promise<any> {
+  const r = await fetch('/api/data/update/index', { method: 'POST' })
+  return r.json()
+}
+
 export interface DataUpdateStatus {
   scheduler: { enabled: boolean; running: boolean; last_run_ts: string | null; last_run_ok: boolean | null; last_error: string | null }
   last_update: any | null
   history: any[]
   backfill: any | null
+  index_update: any | null
   auto_update: boolean
-  freshness: { latest_trade_date: string | null; stocks_on_latest_day: number; stocks_total: number; stale: boolean }
+  freshness: {
+    latest_trade_date: string | null
+    stocks_on_latest_day: number
+    stocks_total: number
+    stale: boolean
+    index_latest_date: string | null
+    index_stale: boolean
+  }
   source?: { active: string; akshare_installed: boolean; akshare_enabled: boolean }
 }
 

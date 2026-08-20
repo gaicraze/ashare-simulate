@@ -20,7 +20,7 @@ from ..llm import config_store
 from ..llm.gateway import LLMGateway, extract_content
 from ..knowledge import store as knowledge_store
 from ..strategy import store as strategy_store
-from ..tools import custom
+from ..tools import custom, generator
 from ..tools.custom import SQLTool
 from ..tools.default import default_registry
 
@@ -221,8 +221,14 @@ def market_kline(start: str, end: str) -> dict:
 
 @router.post("/data/update")
 def data_update() -> dict:
-    """手动触发数据增量更新（腾讯快照全市场当日行情）。"""
+    """手动触发数据增量更新（腾讯快照全市场当日行情 + 指数日线补齐）。"""
     return scheduler.scheduler.run_once()
+
+
+@router.post("/data/update/index")
+def data_update_index() -> dict:
+    """手动补齐指数日线到最新（幂等，可安全重跑）。"""
+    return updater.incremental_index_update()
 
 
 @router.get("/data/update/status")
@@ -437,26 +443,6 @@ def call_tool(req: ToolCallRequest) -> dict:
         return {"ok": False, "error": f"{type(e).__name__}: {e}"}
 
 
-TOOL_GEN_PROMPT = """你是数据分析工具生成器。用户需要一个数据查询工具，请生成一个 SQL 工具的 JSON 定义。
-系统是 DuckDB 数据库，表结构：
-- daily(code, trade_date, open, high, low, close, volume, amount, pct_change, turnover, pe_ttm, pb_mrq)：个股日线
-- stocks(code, name, industry, list_date, status)：股票基础信息
-- finances(code, report_date, pub_date, revenue, net_profit, roe, gross_margin, net_profit_margin, eps_ttm, yoy_net_profit)：季度财务
-- indices(code, name, trade_date, open, high, low, close, volume, amount)：指数日线
-- moneyflow(code, trade_date, main_net_inflow, super_net_inflow, large_net_inflow)：资金流
-- sectors(code, sector, trade_date)：板块
-
-要求：
-1. 只生成 SELECT 查询（禁止写操作）。
-2. 尽量让 SQL 自包含：不需要外部输入时直接用固定条件（如 roe > 0.1），不要用参数。
-3. 确实需要外部输入时，用命名参数 :xxx，且必须在 parameters.properties 里完整定义该参数（type/description），并加入 required。
-4. 只输出 JSON（不要 markdown 代码块），格式：
-{"name":"工具名snake_case","description":"工具描述","parameters":{"type":"object","properties":{...},"required":[...]},"sql":"SELECT ..."}
-
-用户需求：{requirement}
-"""
-
-
 @router.get("/tools/custom")
 def list_custom_tools() -> dict:
     """列出已生成的自造工具。"""
@@ -467,21 +453,7 @@ def list_custom_tools() -> dict:
 def tool_generate(req: ToolGenerateRequest) -> dict:
     """用 LLM 根据需求生成一个自造 SQL 工具，校验后注册。"""
     try:
-        gateway = LLMGateway()
-        resp = gateway.chat(
-            [{"role": "user", "content": TOOL_GEN_PROMPT.replace("{requirement}", req.requirement)}],
-            max_tokens=1000,
-            role="strategy_gen",
-            temperature=0.2,
-        )
-        content = extract_content(resp)
-        if content.startswith("```"):
-            lines = content.split("\n")
-            content = "\n".join(lines[1:])
-            if content.rstrip().endswith("```"):
-                content = content.rstrip()[:-3]
-        import json as _json
-        def_ = _json.loads(content)
+        def_ = generator.generate_tool_def(req.requirement)
     except Exception as e:  # noqa: BLE001
         return {"ok": False, "error": f"生成/解析失败：{type(e).__name__}: {e}"}
 

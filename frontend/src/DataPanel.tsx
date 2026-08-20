@@ -6,6 +6,7 @@ import {
   fetchBackfillStatus,
   triggerMetaBackfill,
   updateData,
+  updateIndexData,
   type Summary,
   type DataUpdateStatus,
 } from './api'
@@ -43,7 +44,25 @@ export default function DataPanel() {
     setMsg('')
     try {
       const r = await updateData()
-      setMsg(r.ok ? `增量更新完成：写入 ${r.inserted} 条，最新交易日 ${r.latest_trade_date}` : `失败：${r.error}`)
+      const idx = r?.index
+      const idxText = idx?.ok
+        ? `，指数已补至 ${idx.end}`
+        : idx && !idx.ok
+          ? '，指数补齐失败'
+          : ''
+      setMsg(r.ok ? `增量更新完成：写入 ${r.inserted} 条，最新交易日 ${r.latest_trade_date}${idxText}` : `失败：${r.error}`)
+    } finally {
+      setBusy(null)
+      refresh()
+    }
+  }
+
+  const doIndex = async () => {
+    setBusy('补齐指数中…')
+    setMsg('')
+    try {
+      const r = await updateIndexData()
+      setMsg(r.ok ? `指数已补齐到 ${r.end}（${(r.codes || []).map((c: any) => `${c.code}=${c.latest}`).join('、')}）` : `失败：${r.error}`)
     } finally {
       setBusy(null)
       refresh()
@@ -87,6 +106,9 @@ export default function DataPanel() {
           <button className="btn" onClick={doIncremental} disabled={busy !== null}>
             增量更新当日行情
           </button>
+          <button className="btn" onClick={doIndex} disabled={busy !== null}>
+            补齐指数日线
+          </button>
           <button className="btn" onClick={doBackfill} disabled={busy !== null}>
             历史回填（成交额/复权因子/换手/流通市值）
           </button>
@@ -107,6 +129,9 @@ export default function DataPanel() {
           新鲜度：最新交易日 <b>{status.freshness.latest_trade_date ?? '—'}</b>，当日覆盖{' '}
           {status.freshness.stocks_on_latest_day}/{status.freshness.stocks_total} 只
           {status.freshness.stale && <span style={{ color: '#c33' }}>（数据滞后，请点“增量更新”）</span>}
+          <br />
+          指数：沪深300 至 <b>{status.freshness.index_latest_date ?? '—'}</b>
+          {status.freshness.index_stale && <span style={{ color: '#c33' }}>（指数滞后于个股，请点“补齐指数日线”）</span>}
           {status.source && (
             <>
               {' '}· 数据源：<b>{status.source.active === 'akshare' ? 'akshare（东财/新浪）' : '腾讯/新浪直连'}</b>

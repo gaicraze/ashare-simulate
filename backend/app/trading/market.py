@@ -102,7 +102,7 @@ def latest_daily_snapshot() -> dict:
         ).fetchone()
         sr = conn.execute(
             """
-            SELECT close,
+            SELECT trade_date, close,
               AVG(close) OVER (ORDER BY trade_date ROWS BETWEEN 19 PRECEDING AND CURRENT ROW) AS ma20,
               AVG(close) OVER (ORDER BY trade_date ROWS BETWEEN 59 PRECEDING AND CURRENT ROW) AS ma60
             FROM indices WHERE code='000300' AND trade_date <= ?
@@ -111,8 +111,8 @@ def latest_daily_snapshot() -> dict:
             [latest],
         ).fetchone()
         regime = "未知"
-        if sr and sr[0] and sr[1] and sr[2]:
-            close, ma20, ma60 = sr[0], sr[1], sr[2]
+        if sr and sr[1] and sr[2] and sr[3]:
+            close, ma20, ma60 = sr[1], sr[2], sr[3]
             if close > ma20 > ma60:
                 regime = "牛市"
             elif close < ma20 < ma60:
@@ -122,9 +122,11 @@ def latest_daily_snapshot() -> dict:
         return {
             "latest_trade_date": latest,
             "regime": regime,
-            "index_close": _f(sr[0]) if sr else None,
-            "ma20": _f(sr[1]) if sr else None,
-            "ma60": _f(sr[2]) if sr else None,
+            # 指数数据实际日期（indices 表可能滞后于 daily，需显式标注供模型识别）
+            "index_date": str(sr[0]) if sr else None,
+            "index_close": _f(sr[1]) if sr else None,
+            "ma20": _f(sr[2]) if sr else None,
+            "ma60": _f(sr[3]) if sr else None,
             "snapshot": {
                 "total": snap[0],
                 "up": snap[1],
@@ -201,10 +203,18 @@ def market_context(pull_intraday: bool = True) -> dict:
     notes: list[str] = []
     if clock["market_open"] and not live_index:
         notes.append("实时行情拉取失败，已降级为最新交易日日线数据")
+    # 指数数据滞后提示：indices 表落后于 daily 时显式标注，避免模型把陈旧收盘价当最新价。
+    index_date = daily.get("index_date")
+    if index_date and daily.get("latest_trade_date") and index_date < daily["latest_trade_date"]:
+        notes.append(
+            f"指数数据滞后：沪深300仅更新到 {index_date}，而个股日线已到 {daily['latest_trade_date']}，"
+            "三层择时/指数均线信号不完整，请勿据此判断最新趋势"
+        )
     return {
         "clock": clock,
         "latest_trade_date": daily.get("latest_trade_date"),
         "regime": daily.get("regime"),
+        "index_date": index_date,
         "index_close": daily.get("index_close"),
         "ma20": daily.get("ma20"),
         "ma60": daily.get("ma60"),

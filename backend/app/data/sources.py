@@ -163,31 +163,8 @@ def fetch_tencent_quotes(codes: Iterable[str], batch: int = 60) -> list[dict]:
 # --------------------------------------------------------------------------- #
 # 腾讯：历史日 K（后复权 + 换手率 + 成交额）
 # --------------------------------------------------------------------------- #
-def fetch_tencent_kline(
-    code: str,
-    start: str,
-    end: str,
-    fq: str = "hfq",
-    count: int = 600,
-) -> list[dict]:
-    """获取单只股票历史日 K。
-
-    返回每条 bar：
-        date / open / close / high / low / volume(股) / turnover(%) / amount(元)
-    其中 fq='hfq' 时 open/close/high/low 为后复权价（用于计算复权因子）。
-    接口单次最多返回约 640 根，需调用方按日期窗口分页。
-    """
-    symbol = tencent_symbol(code)
-    url = TENCENT_KLINE_URL
-    params = {
-        "param": f"{symbol},day,{start},{end},{count},{fq}",
-    }
-    data = _get_json(url, params, timeout=25.0, retries=3, referer="https://gu.qq.com/")
-    if not data or data.get("code") != 0:
-        return []
-    node = (data.get("data") or {}).get(symbol) or {}
-    key = f"{fq}day" if fq else "day"
-    arr = node.get(key) or node.get("day") or []
+def _parse_tencent_kline_rows(arr: list) -> list[dict]:
+    """把腾讯 K 线原始行解析为 bars（与个股/指数共用）。"""
     bars: list[dict] = []
     for row in arr:
         if not isinstance(row, list) or len(row) < 9:
@@ -213,6 +190,38 @@ def fetch_tencent_kline(
         except (ValueError, IndexError):
             continue
     return bars
+
+
+def _fetch_tencent_kline_symbol(
+    symbol: str, start: str, end: str, fq: str = "hfq", count: int = 600
+) -> list[dict]:
+    """按显式腾讯 symbol 拉取历史日 K（个股与指数通用）。"""
+    url = TENCENT_KLINE_URL
+    params = {"param": f"{symbol},day,{start},{end},{count},{fq}"}
+    data = _get_json(url, params, timeout=25.0, retries=3, referer="https://gu.qq.com/")
+    if not data or data.get("code") != 0:
+        return []
+    node = (data.get("data") or {}).get(symbol) or {}
+    key = f"{fq}day" if fq else "day"
+    arr = node.get(key) or node.get("day") or []
+    return _parse_tencent_kline_rows(arr)
+
+
+def fetch_tencent_kline(
+    code: str,
+    start: str,
+    end: str,
+    fq: str = "hfq",
+    count: int = 600,
+) -> list[dict]:
+    """获取单只股票历史日 K。
+
+    返回每条 bar：
+        date / open / close / high / low / volume(股) / turnover(%) / amount(元)
+    其中 fq='hfq' 时 open/close/high/low 为后复权价（用于计算复权因子）。
+    接口单次最多返回约 640 根，需调用方按日期窗口分页。
+    """
+    return _fetch_tencent_kline_symbol(tencent_symbol(code), start, end, fq=fq, count=count)
 
 
 def fetch_tencent_kline_full(code: str, start: str, end: str, fq: str = "hfq") -> list[dict]:
@@ -540,10 +549,29 @@ def fetch_sectors() -> dict[str, list[str]]:
     return fetch_sina_sectors()
 
 
+# 常用指数代码 → 腾讯 symbol（注意：000001 需带 sh 前缀，否则会误判为平安银行等个股）
+_INDEX_TX_SYMBOL = {
+    "000300": "sh000300",
+    "000001": "sh000001",
+    "399001": "sz399001",
+    "399006": "sz399006",
+}
+
+
+def _fetch_tencent_index_hist(code: str, start: str, end: str) -> list[dict]:
+    """腾讯直连的指数日 K（历史日线）。"""
+    symbol = _INDEX_TX_SYMBOL.get(code)
+    if not symbol:
+        return []
+    return _fetch_tencent_kline_symbol(symbol, start, end, fq="", count=1200)
+
+
 def fetch_index_hist(code: str, start: str, end: str) -> list[dict]:
-    """指数日 K（新能力，仅 akshare 提供；腾讯直连暂不支持时返回空）。"""
+    """指数日 K：akshare 优先（东财 index_zh_a_hist），失败/未启用时降级腾讯直连。"""
     if _use_akshare():
         from . import akshare_source
 
-        return akshare_source.fetch_akshare_index_hist(code, start, end)
-    return []
+        bars = akshare_source.fetch_akshare_index_hist(code, start, end)
+        if bars:
+            return bars
+    return _fetch_tencent_index_hist(code, start, end)
